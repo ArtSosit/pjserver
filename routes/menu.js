@@ -1,6 +1,5 @@
 const express = require("express");
 const connection = require("../db");
-
 const router = express.Router();
 console.log("menu.js loaded");
 // Get all menus
@@ -13,13 +12,11 @@ router.get("/", (req, res) => {
     res.status(200).json(results);
   });
 });
-
 // Get menu by store ID
 router.get("/:id", (req, res) => {
   const storeId = req.params.id;
   const query =
     "SELECT menu_items.item_id, menu_items.item_name, menu_items.price, menu_items.item_image, food_categories.category_name AS category FROM menu_items JOIN food_categories ON menu_items.category_id = food_categories.category_id WHERE menu_items.store_id = ?";
-
   connection.query(query, [storeId], (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -30,18 +27,14 @@ router.get("/:id", (req, res) => {
     res.status(200).json(results);
   });
 });
-
 // Create new menu item
 router.post("/", (req, res) => {
   const { category_id, store_id, name, price, item_image } = req.body;
-
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ message: "All fields are required" });
   }
-
   const query =
     "INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) VALUES (?, ?, ?, ?, ?)";
-
   connection.query(
     query,
     [category_id, store_id, name, price, item_image],
@@ -53,17 +46,13 @@ router.post("/", (req, res) => {
     }
   );
 });
-
 // Update menu item
 router.put("/:id", (req, res) => {
   const id = req.params.id;
   const { category_id, store_id, name, price, item_image } = req.body;
-
-
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ error: "All fields are required" });
   }
-
   const query =
     "UPDATE menu_items SET category_id = ?, item_name = ?, price = ?, item_image = ? WHERE item_id = ? AND store_id = ?";
   connection.query(
@@ -80,7 +69,6 @@ router.put("/:id", (req, res) => {
     }
   );
 });
-
 // Delete menu item
 router.delete("/:id", (req, res) => {
   const id = req.params.id;
@@ -92,5 +80,4 @@ router.delete("/:id", (req, res) => {
     res.status(200).json({ message: "Menu deleted successfully" });
   });
 });
-
 module.exports = router;

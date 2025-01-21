@@ -3,7 +3,6 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const connection = require("../db");
-
 const router = express.Router();
 console.log("store.js loaded");
 const storage = multer.diskStorage({
@@ -21,9 +20,7 @@ const storage = multer.diskStorage({
     );
   },
 });
-
 const upload = multer({ storage: storage });
-
 // Add additional info route
 router.post(
   "/additional-info",
@@ -41,14 +38,12 @@ router.post(
       openTime,
       closeTime,
     } = req.body;
-    console.log(req.files);
     const storeImage = req.files["storeImage"]
       ? req.files["storeImage"][0].filename
       : null;
     const promptpayImage = req.files["promptpayimage"]
       ? req.files["promptpayimage"][0].filename
       : null;
-
     const query = `
       UPDATE stores
       SET store_name = ?, details = ?, contact = ?, promptpay_number = ?, store_image = ?, promptpay_qr = ?, open_time=?, close_time=?
@@ -65,7 +60,6 @@ router.post(
       closeTime,
       userID,
     ];
-
     connection.query(query, values, (err, results) => {
       if (err) {
         return res.status(500).json({ error: "Error updating data" });
@@ -91,7 +85,6 @@ router.post("/kitchen", (req, res) => {
       .json({ message: "Data updated successfully!", results, userID });
   });
 });
-
 // Delete kitchen user
 router.delete("/kitchen/:id", (req, res) => {
   const id = req.params.id;
@@ -103,7 +96,6 @@ router.delete("/kitchen/:id", (req, res) => {
     res.status(200).json({ message: "Kitchen user deleted successfully" });
   });
 });
-
 // Get store by ID
 router.get("/:id", (req, res) => {
   const userId = req.params.id;
@@ -118,7 +110,6 @@ router.get("/:id", (req, res) => {
     res.status(200).json(results[0]);
   });
 });
-
 // Get all stores
 // router.get("/", (req, res) => {
 //   const query = "SELECT * FROM stores";
@@ -129,5 +120,4 @@ router.get("/:id", (req, res) => {
 //     res.status(200).json(results);
 //   });
 // });
-
 module.exports = router;

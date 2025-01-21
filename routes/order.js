@@ -1,10 +1,7 @@
 const express = require("express");
 const connection = require("../db");
-
 const router = express.Router();
-
 console.log("order.js loaded");
-
 // Get all orders
 router.get("/", (req, res) => {
   // SQL Query ที่ใช้ description แทน special_instructions
@@ -28,7 +25,6 @@ router.get("/", (req, res) => {
     JOIN menu_items 
         ON order_details.item_id = menu_items.item_id;
   `;
-
   // ใช้ connection.query เพื่อทำการ execute SQL query
   connection.query(query, (err, results) => {
     if (err) {
@@ -37,10 +33,8 @@ router.get("/", (req, res) => {
     res.status(200).json(results); // ส่งข้อมูลกลับในรูปแบบ JSON
   });
 });
-
 router.get("/:storeId", (req, res) => {
   const { storeId } = req.params; // รับค่า storeId จาก URL
-
   const query = `
     SELECT 
       orders.order_id, 
@@ -62,7 +56,6 @@ router.get("/:storeId", (req, res) => {
         ON order_details.item_id = menu_items.item_id
     WHERE orders.store_id = ?;  -- เพิ่มเงื่อนไขการค้นหาจาก store_id
   `;
-
   // ใช้ connection.query พร้อมกับ storeId ที่ถูกส่งเข้ามา
   connection.query(query, [storeId], (err, results) => {
     if (err) {
@@ -71,23 +64,19 @@ router.get("/:storeId", (req, res) => {
     res.status(200).json(results); // ส่งข้อมูลกลับในรูปแบบ JSON
   });
 });
-
 router.post("/", (req, res) => {
   console.log("ORDERRRR");
   const { store_id, table_id, items } = req.body; // รับข้อมูลจาก body
   const orderTime = new Date(); // เวลาสั่งซื้อ
   let totalAmount = 0; // ราคารวมทั้งหมด
-
   // คำสั่ง SQL สำหรับเพิ่ม order
   const orderQuery = `
     INSERT INTO orders (store_id, table_id, order_time, total_amount, payment_status, order_status)
     VALUES (?, ?, ?, ?, "pending", "pending");
   `;
-
   // สร้าง Connection เพื่อเริ่ม Transaction
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
-
     // บันทึกข้อมูลใน orders
     connection.query(
       orderQuery,
@@ -98,15 +87,12 @@ router.post("/", (req, res) => {
             res.status(400).json({ error: err.message });
           });
         }
-
         const orderId = orderResult.insertId; // ดึง order_id ที่สร้างขึ้นใหม่
-
         // เตรียมคำสั่ง SQL สำหรับเพิ่ม order_details
         const orderDetailsQuery = `
         INSERT INTO order_details (order_id, item_id, quantity, price, description)
         VALUES (?, ?, ?, ?, ?);
       `;
-
         // บันทึกข้อมูลใน order_details ทีละรายการ
         const orderDetailsPromises = items.map((item) => {
           const { item_id, quantity, price, description } = item; // ดึงข้อมูลแต่ละรายการ
@@ -122,7 +108,6 @@ router.post("/", (req, res) => {
             );
           });
         });
-
         // รอจนกว่าจะบันทึก order_details ทั้งหมด
         Promise.all(orderDetailsPromises)
           .then(() => {
@@ -141,7 +126,6 @@ router.post("/", (req, res) => {
                     res.status(400).json({ error: err.message });
                   });
                 }
-
                 // ยืนยันการทำ Transaction
                 connection.commit((err) => {
                   if (err) {
@@ -165,16 +149,13 @@ router.post("/", (req, res) => {
     );
   });
 });
-
 router.put("/cancel-order/:orderId", (req, res) => {
   const { orderId } = req.params;
-
   const completeOrderQuery = `
     UPDATE orders 
     SET order_status = 'cancelled' 
     WHERE order_id = ?;
   `;
-
   const updateTableQuery = `
     UPDATE tables 
     SET status = 'available' 
@@ -182,24 +163,20 @@ router.put("/cancel-order/:orderId", (req, res) => {
       SELECT table_id FROM orders WHERE order_id = ?
     );
   `;
-
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
-
     connection.query(completeOrderQuery, [orderId], (err) => {
       if (err) {
         return connection.rollback(() => {
           res.status(400).json({ error: err.message });
         });
       }
-
       connection.query(updateTableQuery, [orderId], (err) => {
         if (err) {
           return connection.rollback(() => {
             res.status(400).json({ error: err.message });
           });
         }
-
         connection.commit((err) => {
           if (err) {
             return connection.rollback(() => {
@@ -214,19 +191,15 @@ router.put("/cancel-order/:orderId", (req, res) => {
     });
   });
 });
-
 router.put("/complete-order/:orderId", (req, res) => {
   const { orderId } = req.params;
-
   const completeOrderQuery = `
     UPDATE orders 
     SET order_status = 'completed' 
     WHERE order_id = ?;
   `;
-
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
-
     connection.query(completeOrderQuery, [orderId], (err) => {
       if (err) {
         return connection.rollback(() => {
@@ -236,16 +209,13 @@ router.put("/complete-order/:orderId", (req, res) => {
     });
   });
 });
-
 router.put("/complete-paid/:orderId", (req, res) => {
   const { orderId } = req.params;
-
   const completeOrderQuery = `
     UPDATE orders 
     SET payment_status = 'paid' 
     WHERE order_id = ?;
   `;
-
   const updateTableQuery = `
     UPDATE tables 
     SET status = 'available' 
@@ -253,10 +223,8 @@ router.put("/complete-paid/:orderId", (req, res) => {
       SELECT table_id FROM orders WHERE order_id = ?
     );
   `;
-
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
-
     connection.query(completeOrderQuery, [orderId], (err) => {
       if (err) {
         return connection.rollback(() => {
@@ -271,7 +239,6 @@ router.put("/complete-paid/:orderId", (req, res) => {
         res.status(400).json({ error: err.message });
       });
     }
-
     connection.commit((err) => {
       if (err) {
         return connection.rollback(() => {
@@ -284,11 +251,9 @@ router.put("/complete-paid/:orderId", (req, res) => {
     });
   });
 });
-
 // Route to get daily sales for paid orders
 router.get("/sales", (req, res) => {
   const { store_id, date } = req.query; // รับ store_id และวันที่จาก query parameters
-
   // คำสั่ง SQL เพื่อคำนวณยอดขายรายวัน โดยเลือกเฉพาะคำสั่งที่ชำระเงินแล้ว (payment_status = 'paids')
   const salesQuery = `
     SELECT 
@@ -299,21 +264,17 @@ router.get("/sales", (req, res) => {
       AND payment_status = 'paids' -- เพิ่มเงื่อนไขเฉพาะคำสั่งที่ชำระเงินแล้ว
       AND order_status = 'completed'; -- หรือสถานะออเดอร์ที่สมบูรณ์
   `;
-
   // ทำการ query ข้อมูลยอดขาย
   connection.query(salesQuery, [store_id, date], (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
-
     // ตรวจสอบผลลัพธ์
     if (results.length === 0 || results[0].total_sales === null) {
       return res.status(200).json({ total_sales: 0 }); // ถ้ายอดขายไม่มี ให้ส่ง 0
     }
-
     // ส่งผลลัพธ์กลับ
     res.status(200).json({ total_sales: results[0].total_sales });
   });
 });
-
 module.exports = router;

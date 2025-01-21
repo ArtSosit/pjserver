@@ -13,7 +13,6 @@ router.get("/", (req, res) => {
     res.status(200).json(results);
   });
 });
-
 // Get categories by store ID
 router.get("/:id", (req, res) => {
   const storeId = req.params.id;
@@ -28,7 +27,6 @@ router.get("/:id", (req, res) => {
     res.status(200).json(results);
   });
 });
-
 // add category
 router.post("/", (req, res) => {
   console.log("im in post");
@@ -55,7 +53,6 @@ router.post("/", (req, res) => {
     });
   });
 });
-
 // delete category
 router.delete("/:id", (req, res) => {
   const id = req.params.id;
@@ -70,7 +67,6 @@ router.delete("/:id", (req, res) => {
     res.status(200).json({ message: "Category deleted successfully" });
   });
 });
-
 // update category
 router.put("/:id", (req, res) => {
   const id = req.params.id;

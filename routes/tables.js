@@ -1,6 +1,5 @@
 const express = require("express");
 const connection = require("../db");
-
 const router = express.Router();
 console.log("table.js loaded");
 //get tables
@@ -13,7 +12,6 @@ router.get("/", (req, res) => {
     res.status(200).json(results);
   });
 });
-
 //get tables from store
 router.get("/:id", (req, res) => {
   const storeId = req.params.id;
@@ -25,15 +23,12 @@ router.get("/:id", (req, res) => {
     res.status(200).json(results);
   });
 });
-
 //create table
 router.post("/", (req, res) => {
-  const { userId, table_number, table_qr_code } = req.body;
-  console.log(userId, table_number, table_qr_code);
-  const qrCode = table_qr_code ?? null;
+  const { store_id, table_name, table_qr_code } = req.body;
   const query =
-    "INSERT INTO tables (store_id, table_number,table_qr_code) VALUES (?,?,?)";
-  const values = [userId, table_number, qrCode];
+    "INSERT INTO tables (store_id, table_name,table_qr_code) VALUES (?,?)";
+  const values = [store_id, table_name, table_qr_code];
   connection.query(query, values, (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -45,7 +40,6 @@ router.post("/", (req, res) => {
     });
   });
 });
-
 //delete table
 router.delete("/:id", (req, res) => {
   const id = req.params.id;
