@@ -41,6 +41,7 @@ router.post(
       openTime,
       closeTime,
     } = req.body;
+    console.log(req.files);
     const storeImage = req.files["storeImage"]
       ? req.files["storeImage"][0].filename
       : null;
