@@ -5,24 +5,27 @@ const path = require("path");
 const connection = require("../db");
 const router = express.Router();
 console.log("store.js loaded");
+
+const { uploadFiles } = require("./fileUpload");
+
+// Add additional info route
+const uploadDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = "./uploads";
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir);
-    }
-    cb(null, dir);
+    cb(null, uploadDir); // Save to 'uploads' directory
   },
   filename: (req, file, cb) => {
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
+    // Save file with original name
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
+
 const upload = multer({ storage: storage });
-// Add additional info route
-router.post(
+router.put(
   "/additional-info",
   upload.fields([
     { name: "storeImage", maxCount: 1 },
@@ -38,38 +41,57 @@ router.post(
       openTime,
       closeTime,
     } = req.body;
-    const storeImage = req.files["storeImage"]
-      ? req.files["storeImage"][0].filename
-      : null;
-    const promptpayImage = req.files["promptpayimage"]
-      ? req.files["promptpayimage"][0].filename
-      : null;
+
+    // ไฟล์รูปภาพสามารถเป็น null ได้
+    const storeImage = req.files?.storeImage?.[0]?.filename || null;
+    const promptpayImage = req.files?.promptpayimage?.[0]?.filename || null;
+
+    // ตรวจสอบเฉพาะฟิลด์ใน body
+    if (!storeName) {
+      return res.status(400).json({ error: "storeName is required." });
+    }
+
     const query = `
       UPDATE stores
-      SET store_name = ?, details = ?, contact = ?, promptpay_number = ?, store_image = ?, promptpay_qr = ?, open_time=?, close_time=?
+      SET 
+        store_name = ?, 
+        details = ?, 
+        contact = ?, 
+        promptpay_number = ?, 
+        store_image = ?, 
+        promptpay_qr = ?, 
+        open_time = ?, 
+        close_time = ? 
       WHERE store_id = ?;
     `;
+
     const values = [
-      storeName,
-      storeDetails,
-      contactInfo,
-      promptpay,
-      storeImage,
-      promptpayImage,
-      openTime,
-      closeTime,
-      userID,
+      storeName, // จำเป็นต้องมีค่า
+      storeDetails || null, // กำหนดค่าเริ่มต้นเป็น null หากไม่มีข้อมูล
+      contactInfo || null, // กำหนดค่าเริ่มต้นเป็น null หากไม่มีข้อมูล
+      promptpay || null,
+      storeImage, // รูปภาพสามารถเป็น null ได้
+      promptpayImage, // รูปภาพสามารถเป็น null ได้
+      openTime || null,
+      closeTime || null,
+      userID || null, // หาก userID ไม่ส่งมา สามารถเป็น null ได้
     ];
+
     connection.query(query, values, (err, results) => {
       if (err) {
-        return res.status(500).json({ error: "Error updating data" });
+        console.error("Database error:", err);
+        return res
+          .status(500)
+          .json({ error: "Error updating data", details: err.message });
       }
-      res
-        .status(200)
-        .json({ message: "Data updated successfully!", results, userID });
+      res.status(200).json({
+        message: "Data updated successfully!",
+        results,
+      });
     });
   }
 );
+
 //Add kitchen user
 router.post("/kitchen", (req, res) => {
   const { store_id, username, password } = req.body;

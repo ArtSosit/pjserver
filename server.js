@@ -2,7 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const app = express();
-
+const path = require("path");
 app.use(bodyParser.json());
 app.use(cors());
 
@@ -22,6 +22,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/tables", tableRoutes);
 
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

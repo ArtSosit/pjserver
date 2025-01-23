@@ -1,8 +1,21 @@
 const express = require("express");
 const connection = require("../db");
 const router = express.Router();
+const multer = require("multer");
 console.log("menu.js loaded");
 // Get all menus
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // โฟลเดอร์สำหรับเก็บไฟล์
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + "-" + uniqueSuffix + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage });
 router.get("/", (req, res) => {
   const query = "SELECT * FROM menu_items";
   connection.query(query, (err, results) => {
@@ -28,13 +41,19 @@ router.get("/:id", (req, res) => {
   });
 });
 // Create new menu item
-router.post("/", (req, res) => {
-  const { category_id, store_id, name, price, item_image } = req.body;
+router.post("/", upload.single("item_image"), (req, res) => {
+  const { category_id, store_id, name, price } = req.body;
+  const item_image = req.file ? req.file.filename : null;
+
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ message: "All fields are required" });
   }
-  const query =
-    "INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) VALUES (?, ?, ?, ?, ?)";
+
+  const query = `
+    INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) 
+    VALUES (?, ?, ?, ?, ?);
+  `;
+
   connection.query(
     query,
     [category_id, store_id, name, price, item_image],
@@ -47,14 +66,21 @@ router.post("/", (req, res) => {
   );
 });
 // Update menu item
-router.put("/:id", (req, res) => {
+router.put("/:id", upload.single("menuImage"), (req, res) => {
   const id = req.params.id;
-  const { category_id, store_id, name, price, item_image } = req.body;
+  const { category_id, store_id, name, price } = req.body;
+  const item_image = req.file ? req.file.filename : null;
+
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ error: "All fields are required" });
   }
-  const query =
-    "UPDATE menu_items SET category_id = ?, item_name = ?, price = ?, item_image = ? WHERE item_id = ? AND store_id = ?";
+
+  const query = `
+    UPDATE menu_items 
+    SET category_id = ?, item_name = ?, price = ?, item_image = ? 
+    WHERE item_id = ? AND store_id = ?;
+  `;
+
   connection.query(
     query,
     [category_id, name, price, item_image, id, store_id],
