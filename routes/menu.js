@@ -3,15 +3,22 @@ const connection = require("../db");
 const router = express.Router();
 const multer = require("multer");
 console.log("menu.js loaded");
+const path = require("path");
+const fs = require("fs");
 // Get all menus
+
+const uploadDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // โฟลเดอร์สำหรับเก็บไฟล์
+    cb(null, uploadDir); // Save to 'uploads' directory
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + "-" + file.originalname);
+    // Save file with original name
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
 
@@ -43,12 +50,16 @@ router.get("/:id", (req, res) => {
 // Create new menu item
 router.post("/", upload.single("item_image"), (req, res) => {
   const { category_id, store_id, name, price } = req.body;
+
+  // Get the uploaded file's name (if any)
   const item_image = req.file ? req.file.filename : null;
 
+  // Validate input fields
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
+  // SQL query to insert a new menu item
   const query = `
     INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) 
     VALUES (?, ?, ?, ?, ?);
@@ -59,14 +70,20 @@ router.post("/", upload.single("item_image"), (req, res) => {
     [category_id, store_id, name, price, item_image],
     (err, results) => {
       if (err) {
+        console.error("Error inserting menu item:", err.message);
         return res.status(400).json({ error: err.message });
       }
-      res.status(201).json({ message: "Menu created successfully", results });
+
+      res.status(201).json({
+        message: "Menu created successfully",
+        menuItemId: results.insertId, // Return the new item's ID
+      });
     }
   );
 });
+
 // Update menu item
-router.put("/:id", upload.single("menuImage"), (req, res) => {
+router.put("/:id", upload.single("item_image"), (req, res) => {
   const id = req.params.id;
   const { category_id, store_id, name, price } = req.body;
   const item_image = req.file ? req.file.filename : null;
@@ -106,4 +123,6 @@ router.delete("/:id", (req, res) => {
     res.status(200).json({ message: "Menu deleted successfully" });
   });
 });
+
+
 module.exports = router;

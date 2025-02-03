@@ -25,10 +25,10 @@ router.get("/:id", (req, res) => {
 });
 //create table
 router.post("/", (req, res) => {
-  const { store_id, table_name, table_qr_code } = req.body;
+  const { userId, table_number, table_qr } = req.body;
   const query =
-    "INSERT INTO tables (store_id, table_name,table_qr_code) VALUES (?,?)";
-  const values = [store_id, table_name, table_qr_code];
+    "INSERT INTO tables (store_id, table_number,table_qr_code) VALUES (?,?,?)";
+  const values = [userId, table_number, table_qr];
   connection.query(query, values, (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });

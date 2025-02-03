@@ -6,7 +6,7 @@ console.log("order.js loaded");
 router.get("/", (req, res) => {
   // SQL Query ที่ใช้ description แทน special_instructions
   const query = `
-    SELECT 
+    SELECT  
       orders.order_id, 
       orders.store_id, 
       orders.table_id, 
@@ -34,36 +34,64 @@ router.get("/", (req, res) => {
   });
 });
 router.get("/:storeId", (req, res) => {
-  const { storeId } = req.params; // รับค่า storeId จาก URL
+  const { storeId } = req.params;
   const query = `
     SELECT 
-      orders.order_id, 
-      orders.store_id, 
-      orders.table_id, 
-      orders.order_time, 
-      orders.total_amount, 
-      orders.payment_status, 
-      orders.order_status, 
-      order_details.item_id, 
-      menu_items.item_name,  -- ดึงชื่อเมนูจากตาราง menu_items
-      order_details.quantity, 
-      order_details.price, 
-      order_details.description  -- ใช้ description ตามที่ตกลงไว้
-    FROM orders
-    JOIN order_details 
-        ON orders.order_id = order_details.order_id
-    JOIN menu_items 
-        ON order_details.item_id = menu_items.item_id
-    WHERE orders.store_id = ?;  -- เพิ่มเงื่อนไขการค้นหาจาก store_id
+  orders.order_id AS \`order\`,
+  tables.table_number AS tableNumber,
+  menu_items.item_name AS name,
+  menu_items.item_id,  -- แสดง item_id
+  SUM(order_details.quantity) AS quantity,  -- รวม quantity ของ item_id เดียวกัน
+  menu_items.price,  -- ดึงราคาจากเมนู
+  SUM(order_details.quantity * menu_items.price) AS totalPrice  -- คำนวณราคาทั้งหมด
+FROM orders
+JOIN order_details ON orders.order_id = order_details.order_id
+JOIN menu_items ON order_details.item_id = menu_items.item_id
+JOIN tables ON orders.table_id = tables.table_id
+WHERE orders.store_id = ?
+GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id, menu_items.price
+ORDER BY orders.order_id, tables.table_number;
+
   `;
-  // ใช้ connection.query พร้อมกับ storeId ที่ถูกส่งเข้ามา
+
   connection.query(query, [storeId], (err, results) => {
     if (err) {
-      return res.status(400).json({ error: err.message }); // กรณีมีข้อผิดพลาด
+      return res.status(400).json({ error: err.message });
     }
-    res.status(200).json(results); // ส่งข้อมูลกลับในรูปแบบ JSON
+
+    // Group the result into desired format
+    const groupedOrders = results.reduce((acc, row) => {
+      // Find if the order already exists in the accumulator
+      let order = acc.find((order) => order.order === row.order);
+      if (!order) {
+        // If not, create a new order object
+        order = {
+          order: row.order,
+          tableNumber: row.tableNumber,
+          items: [],
+          totalPrice: 0,
+        };
+        acc.push(order);
+      }
+
+      // Add item to the order
+      order.items.push({
+        name: row.name,
+        quantity: row.quantity,
+        price: row.price,
+      });
+
+      // Update total price for the order
+      order.totalPrice += row.quantity * row.price;
+
+      return acc;
+    }, []);
+
+    // Return the grouped result
+    res.status(200).json(groupedOrders);
   });
 });
+
 router.post("/", (req, res) => {
   console.log("ORDERRRR");
   const { store_id, table_id, items } = req.body; // รับข้อมูลจาก body
