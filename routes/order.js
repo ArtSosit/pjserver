@@ -42,15 +42,16 @@ router.get("/:storeId", (req, res) => {
   menu_items.item_name AS name,
   menu_items.item_id,  -- แสดง item_id
   SUM(order_details.quantity) AS quantity,  -- รวม quantity ของ item_id เดียวกัน
-  menu_items.price,  -- ดึงราคาจากเมนู
+  MIN(menu_items.price) AS price,  -- ใช้ MIN เพื่อให้แน่ใจว่าราคาเมนูถูกต้อง
   SUM(order_details.quantity * menu_items.price) AS totalPrice  -- คำนวณราคาทั้งหมด
 FROM orders
 JOIN order_details ON orders.order_id = order_details.order_id
 JOIN menu_items ON order_details.item_id = menu_items.item_id
 JOIN tables ON orders.table_id = tables.table_id
 WHERE orders.store_id = ?
-GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id, menu_items.price
+GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id
 ORDER BY orders.order_id, tables.table_number;
+
 
   `;
 
