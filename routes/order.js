@@ -93,43 +93,104 @@ ORDER BY orders.order_id, tables.table_number;
   });
 });
 
+router.get("/:storeId/:orderId", (req, res) => {
+  const { storeId, orderId } = req.params;
+
+  const query = `
+    SELECT 
+      orders.order_id AS orderId,
+      tables.table_number AS tableNumber,
+      menu_items.item_name AS name,
+      menu_items.item_image AS image ,
+      menu_items.item_id,
+      SUM(order_details.quantity) AS quantity,
+      MIN(menu_items.price) AS price,
+      SUM(order_details.quantity * menu_items.price) AS totalPrice
+    FROM orders
+    JOIN order_details ON orders.order_id = order_details.order_id
+    JOIN menu_items ON order_details.item_id = menu_items.item_id
+    JOIN tables ON orders.table_id = tables.table_id
+    WHERE orders.store_id = ? AND orders.order_id = ?
+    GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id
+    ORDER BY orders.order_id, tables.table_number;
+  `;
+
+  connection.query(query, [storeId, orderId], (err, results) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลออเดอร์" });
+    }
+
+    // จัดกลุ่มข้อมูล
+    const groupedOrder = {
+      orderId: results[0].orderId,
+      tableNumber: results[0].tableNumber,
+      items: results.map((row) => ({
+        itemId: row.item_id,
+        name: row.name,
+        quantity: row.quantity,
+        price: parseFloat(row.price),
+        image: row.image,
+      })),
+      totalPrice: results.reduce((sum, row) => sum + row.totalPrice, 0), // คำนวณราคาทั้งหมด
+    };
+
+    res.status(200).json(groupedOrder);
+  });
+});
+
 router.post("/", (req, res) => {
-  console.log("ORDERRRR");
-  const { store_id, table_id, items } = req.body; // รับข้อมูลจาก body
-  const orderTime = new Date(); // เวลาสั่งซื้อ
-  let totalAmount = 0; // ราคารวมทั้งหมด
-  // คำสั่ง SQL สำหรับเพิ่ม order
+  console.log("📦 ORDER RECEIVED:", req.body);
+
+  const { store_id, table_id, items } = req.body;
+  if (!store_id || !table_id || !items || items.length === 0) {
+    return res.status(400).json({ error: "❌ ข้อมูลไม่ครบถ้วน!" });
+  }
+
+  const orderTime = new Date();
+  const totalAmount = items.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
   const orderQuery = `
     INSERT INTO orders (store_id, table_id, order_time, total_amount, payment_status, order_status)
-    VALUES (?, ?, ?, ?, "pending", "pending");
+    VALUES (?, ?, ?, ?, "unpaid", "pending");
   `;
-  // สร้าง Connection เพื่อเริ่ม Transaction
+
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
-    // บันทึกข้อมูลใน orders
+
     connection.query(
       orderQuery,
       [store_id, table_id, orderTime, totalAmount],
       (err, orderResult) => {
         if (err) {
-          return connection.rollback(() => {
-            res.status(400).json({ error: err.message });
-          });
+          return connection.rollback(() =>
+            res.status(400).json({ error: err.message })
+          );
         }
-        const orderId = orderResult.insertId; // ดึง order_id ที่สร้างขึ้นใหม่
-        // เตรียมคำสั่ง SQL สำหรับเพิ่ม order_details
+
+        const orderId = orderResult.insertId;
         const orderDetailsQuery = `
         INSERT INTO order_details (order_id, item_id, quantity, price, description)
         VALUES (?, ?, ?, ?, ?);
       `;
-        // บันทึกข้อมูลใน order_details ทีละรายการ
+
         const orderDetailsPromises = items.map((item) => {
-          const { item_id, quantity, price, description } = item; // ดึงข้อมูลแต่ละรายการ
-          totalAmount += price * quantity; // คำนวณราคารวม
           return new Promise((resolve, reject) => {
             connection.query(
               orderDetailsQuery,
-              [orderId, item_id, quantity, price, description],
+              [
+                orderId,
+                item.item_id,
+                item.quantity,
+                item.price,
+                item.description,
+              ],
               (err) => {
                 if (err) return reject(err);
                 resolve();
@@ -137,47 +198,30 @@ router.post("/", (req, res) => {
             );
           });
         });
-        // รอจนกว่าจะบันทึก order_details ทั้งหมด
+
         Promise.all(orderDetailsPromises)
           .then(() => {
-            // อัปเดตราคารวมใน orders
-            const updateTotalQuery = `
-            UPDATE orders 
-            SET total_amount = ? 
-            WHERE order_id = ?;
-          `;
-            connection.query(
-              updateTotalQuery,
-              [totalAmount, orderId],
-              (err) => {
-                if (err) {
-                  return connection.rollback(() => {
-                    res.status(400).json({ error: err.message });
-                  });
-                }
-                // ยืนยันการทำ Transaction
-                connection.commit((err) => {
-                  if (err) {
-                    return connection.rollback(() => {
-                      res.status(400).json({ error: err.message });
-                    });
-                  }
-                  res
-                    .status(201)
-                    .json({ message: "Order placed successfully!", orderId }); // ส่ง response
-                });
+            connection.commit((err) => {
+              if (err) {
+                return connection.rollback(() =>
+                  res.status(400).json({ error: err.message })
+                );
               }
-            );
+              res
+                .status(201)
+                .json({ message: "✅ Order placed successfully!", orderId });
+            });
           })
           .catch((err) => {
-            connection.rollback(() => {
-              res.status(400).json({ error: err.message });
-            });
+            connection.rollback(() =>
+              res.status(400).json({ error: err.message })
+            );
           });
       }
     );
   });
 });
+
 router.put("/cancel-order/:orderId", (req, res) => {
   const { orderId } = req.params;
   const completeOrderQuery = `
