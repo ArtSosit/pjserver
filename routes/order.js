@@ -47,7 +47,7 @@ router.get("/:storeId", (req, res) => {
       orders.order_status as orderstatus,
       SUM(order_details.quantity) AS quantity,
       MIN(menu_items.price) AS price,
-      SUM(order_details.quantity * menu_items.price) AS totalPrice
+      orders.total_amount AS totalPrice
     FROM orders
     JOIN order_details ON orders.order_id = order_details.order_id
     JOIN menu_items ON order_details.item_id = menu_items.item_id
@@ -154,7 +154,7 @@ router.get("/:storeId/:orderId", (req, res) => {
 router.post("/", (req, res) => {
   console.log("📦 ORDER RECEIVED:", req.body);
 
-  const { store_id, table_id, items } = req.body;
+  const { store_id, table_id, items, order_id } = req.body;
   if (!store_id || !table_id || !items || items.length === 0) {
     return res.status(400).json({ error: "❌ ข้อมูลไม่ครบถ้วน!" });
   }
@@ -165,69 +165,91 @@ router.post("/", (req, res) => {
     0
   );
 
-  const orderQuery = `
-    INSERT INTO orders (store_id, table_id, order_time, total_amount, payment_status, order_status)
-    VALUES (?, ?, ?, ?, "unpaid", "pending");
-  `;
-
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
 
-    connection.query(
-      orderQuery,
-      [store_id, table_id, orderTime, totalAmount],
-      (err, orderResult) => {
+    if (order_id) {
+      // อัปเดตสถานะ order_status เป็น "pending"
+      const updateOrderQuery = `
+        UPDATE orders SET total_amount = total_amount + ? ,order_status = "pending" WHERE order_id = ?;
+      `;
+
+      connection.query(updateOrderQuery, [totalAmount, order_id], (err) => {
         if (err) {
           return connection.rollback(() =>
             res.status(400).json({ error: err.message })
           );
         }
+        insertOrderDetails(order_id); // เรียกฟังก์ชันเพิ่มรายการสินค้า
+      });
+    } else {
+      // ถ้าไม่มี order_id -> ให้สร้าง order ใหม่
+      const insertOrderQuery = `
+        INSERT INTO orders (store_id, table_id, order_time, total_amount, payment_status, order_status)
+        VALUES (?, ?, ?, ?, "unpaid", "pending");
+      `;
 
-        const orderId = orderResult.insertId;
-        const orderDetailsQuery = `
+      connection.query(
+        insertOrderQuery,
+        [store_id, table_id, orderTime, totalAmount],
+        (err, orderResult) => {
+          if (err) {
+            return connection.rollback(() =>
+              res.status(400).json({ error: err.message })
+            );
+          }
+          const newOrderId = orderResult.insertId;
+          insertOrderDetails(newOrderId);
+        }
+      );
+    }
+
+    // ฟังก์ชันสำหรับ INSERT order_details
+    function insertOrderDetails(orderId) {
+      const orderDetailsQuery = `
         INSERT INTO order_details (order_id, item_id, quantity, price, description)
         VALUES (?, ?, ?, ?, ?);
       `;
 
-        const orderDetailsPromises = items.map((item) => {
-          return new Promise((resolve, reject) => {
-            connection.query(
-              orderDetailsQuery,
-              [
-                orderId,
-                item.item_id,
-                item.quantity,
-                item.price,
-                item.description,
-              ],
-              (err) => {
-                if (err) return reject(err);
-                resolve();
-              }
-            );
-          });
+      const orderDetailsPromises = items.map((item) => {
+        return new Promise((resolve, reject) => {
+          connection.query(
+            orderDetailsQuery,
+            [
+              orderId,
+              item.item_id,
+              item.quantity,
+              item.price,
+              item.description,
+            ],
+            (err) => {
+              if (err) return reject(err);
+              resolve();
+            }
+          );
         });
+      });
 
-        Promise.all(orderDetailsPromises)
-          .then(() => {
-            connection.commit((err) => {
-              if (err) {
-                return connection.rollback(() =>
-                  res.status(400).json({ error: err.message })
-                );
-              }
-              res
-                .status(201)
-                .json({ message: "✅ Order placed successfully!", orderId });
+      Promise.all(orderDetailsPromises)
+        .then(() => {
+          connection.commit((err) => {
+            if (err) {
+              return connection.rollback(() =>
+                res.status(400).json({ error: err.message })
+              );
+            }
+            res.status(201).json({
+              message: "✅ Order placed successfully!",
+              orderId,
             });
-          })
-          .catch((err) => {
-            connection.rollback(() =>
-              res.status(400).json({ error: err.message })
-            );
           });
-      }
-    );
+        })
+        .catch((err) => {
+          connection.rollback(() =>
+            res.status(400).json({ error: err.message })
+          );
+        });
+    }
   });
 });
 
