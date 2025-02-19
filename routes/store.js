@@ -142,4 +142,18 @@ router.get("/:id", (req, res) => {
 //     res.status(200).json(results);
 //   });
 // });
+
+router.get("/ppqr/:id", (req, res) => {
+  const userId = req.params.id;
+  const query = "SELECT promptpay_qr FROM stores WHERE store_id = ?";
+  connection.query(query, [userId], (err, results) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json(results[0]);
+  });
+});
 module.exports = router;

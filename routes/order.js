@@ -1,7 +1,28 @@
 const express = require("express");
 const connection = require("../db");
 const router = express.Router();
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
 console.log("order.js loaded");
+
+const uploadDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir); // Save to 'uploads' directory
+  },
+  filename: (req, file, cb) => {
+    // Save file with original name
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
+
 // Get all orders
 router.get("/", (req, res) => {
   // SQL Query ที่ใช้ description แทน special_instructions
@@ -99,12 +120,82 @@ router.get("/:storeId", (req, res) => {
   });
 });
 
+router.get("/paid/:storeId", (req, res) => {
+  const { storeId } = req.params;
+  const query = `
+    SELECT 
+      orders.order_id AS \`order\`,
+      tables.table_number AS tableNumber,
+      menu_items.item_name AS name,
+      menu_items.item_id,
+      menu_items.item_image as item_image,
+      order_details.order_detail_id AS detail_id,
+      order_details.Status as status,
+      orders.order_status as orderstatus,
+      SUM(order_details.quantity) AS quantity,
+      MIN(menu_items.price) AS price,
+      orders.total_amount AS totalPrice,
+      orders.payment_proof as proof
+    FROM orders
+    JOIN order_details ON orders.order_id = order_details.order_id
+    JOIN menu_items ON order_details.item_id = menu_items.item_id
+    JOIN tables ON orders.table_id = tables.table_id
+    WHERE orders.store_id = ? AND orders.order_status = 'success'
+    GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id, order_details.order_detail_id
+    ORDER BY orders.order_id, tables.table_number;
+  `;
+
+  connection.query(query, [storeId], (err, results) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    // Grouping orders properly
+    const groupedOrders = results.reduce((acc, row) => {
+      let order = acc.find((order) => order.order === row.order);
+      if (!order) {
+        order = {
+          order: row.order,
+          tableNumber: row.tableNumber,
+          items: [],
+          totalPrice: row.totalPrice, // Use SQL-calculated totalPrice directly
+          orderstatus: row.orderstatus,
+          proof: row.proof,
+        };
+        acc.push(order);
+      }
+
+      // Check if item exists in the current order
+      let existingItem = order.items.find(
+        (item) => item.detail_id === row.detail_id
+      );
+      if (existingItem) {
+        existingItem.quantity += row.quantity; // Merge quantities for same item
+      } else {
+        order.items.push({
+          detail_id: row.detail_id,
+          name: row.name,
+          quantity: row.quantity,
+          price: row.price,
+          status: row.status,
+          item_image: row.item_image,
+        });
+      }
+
+      return acc;
+    }, []);
+
+    res.status(200).json(groupedOrders);
+  });
+});
+
 router.get("/:storeId/:orderId", (req, res) => {
   const { storeId, orderId } = req.params;
 
   const query = `
     SELECT 
       orders.order_id AS orderId,
+      orders.order_time AS ordertime,
       tables.table_number AS tableNumber,
       menu_items.item_name AS name,
       menu_items.item_image AS image ,
@@ -134,6 +225,7 @@ router.get("/:storeId/:orderId", (req, res) => {
     // จัดกลุ่มข้อมูล
     const groupedOrder = {
       orderId: results[0].orderId,
+      orderTime: results[0].ordertime,
       tableNumber: results[0].tableNumber,
       items: results.map((row) => ({
         detail_id: row.detail_id,
@@ -142,6 +234,7 @@ router.get("/:storeId/:orderId", (req, res) => {
         quantity: row.quantity,
         price: parseFloat(row.price),
         image: row.image,
+
         status: row.status,
       })),
       totalPrice: results.reduce((sum, row) => sum + row.totalPrice, 0), // คำนวณราคาทั้งหมด
@@ -479,6 +572,44 @@ router.put("/cancelledDetail/:detailId", (req, res) => {
           });
         }
         res.status(200).json({ message: "Order detail updated successfully." });
+      });
+    });
+  });
+});
+
+router.put("/proof/:orderId", upload.single("proof"), (req, res) => {
+  const { orderId } = req.params;
+  const proofimg = req.file ? req.file.filename : null;
+
+  if (!proofimg) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  const updateOrderQuery = `
+    UPDATE orders 
+    SET payment_proof = ? 
+    WHERE order_id = ?;
+  `;
+
+  connection.beginTransaction((err) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    connection.query(updateOrderQuery, [proofimg, orderId], (err) => {
+      if (err) {
+        return connection.rollback(() => {
+          res.status(400).json({ error: err.message });
+        });
+      }
+      connection.commit((err) => {
+        if (err) {
+          return connection.rollback(() => {
+            res.status(500).json({ error: err.message });
+          });
+        }
+        res.status(200).json({
+          message: "Payment proof uploaded successfully!",
+          proof: proofimg,
+        });
       });
     });
   });
