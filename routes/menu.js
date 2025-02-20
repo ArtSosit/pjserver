@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const connection = require("../db");
 const router = express.Router();
 const multer = require("multer");
@@ -6,6 +7,9 @@ console.log("menu.js loaded");
 const path = require("path");
 const fs = require("fs");
 // Get all menus
+const app = express();
+app.use(cors());
+app.use(express.json());
 
 const uploadDir = path.join(__dirname, "..", "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -36,7 +40,7 @@ router.get("/", (req, res) => {
 router.get("/:id", (req, res) => {
   const storeId = req.params.id;
   const query =
-    "SELECT menu_items.item_id, menu_items.item_name, menu_items.price, menu_items.item_image, food_categories.category_name AS category FROM menu_items JOIN food_categories ON menu_items.category_id = food_categories.category_id WHERE menu_items.store_id = ?";
+    "SELECT menu_items.status,menu_items.item_id, menu_items.item_name, menu_items.price, menu_items.item_image, food_categories.category_name AS category FROM menu_items JOIN food_categories ON menu_items.category_id = food_categories.category_id WHERE menu_items.store_id = ?";
   connection.query(query, [storeId], (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -50,15 +54,12 @@ router.get("/:id", (req, res) => {
 // Create new menu item
 router.post("/", upload.single("item_image"), (req, res) => {
   const { category_id, store_id, name, price } = req.body;
-
   // Get the uploaded file's name (if any)
   const item_image = req.file ? req.file.filename : null;
-
   // Validate input fields
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ message: "All fields are required" });
   }
-
   // SQL query to insert a new menu item
   const query = `
     INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) 
@@ -121,6 +122,32 @@ router.delete("/:id", (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     res.status(200).json({ message: "Menu deleted successfully" });
+  });
+});
+
+router.post("/status", upload.none(), (req, res) => {
+  console.log("📩 Received FormData:", req.body); // ✅ Debug ค่าที่ได้รับ
+
+  const { menuId, status } = req.body;
+
+  if (!menuId || !status) {
+    return res.status(400).json({ error: "❌ Missing menuId or status" });
+  }
+
+  const updateQuery = `UPDATE menu_items SET status = ? WHERE item_id = ?`;
+  connection.query(updateQuery, [status, menuId], (err, result) => {
+    if (err) {
+      console.error("❌ Database Error:", err.message);
+      return res.status(500).json({ error: "Database error: " + err.message });
+    }
+
+    console.log("✅ SQL Result:", result);
+    if (result.affectedRows === 0) {
+      console.warn("⚠️ No menu updated!");
+      return res.status(404).json({ error: "Menu not found" });
+    }
+
+    res.status(200).json({ message: "✅ Menu status updated successfully" });
   });
 });
 

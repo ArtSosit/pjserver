@@ -72,7 +72,7 @@ router.get("/:storeId", (req, res) => {
     FROM orders
     JOIN order_details ON orders.order_id = order_details.order_id
     JOIN menu_items ON order_details.item_id = menu_items.item_id
-    JOIN tables ON orders.table_id = tables.table_id
+    LEFT JOIN tables ON orders.table_id = tables.table_id
     WHERE orders.store_id = ? 
     GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id, order_details.order_detail_id
     ORDER BY orders.order_id, tables.table_number;
@@ -139,7 +139,7 @@ router.get("/paid/:storeId", (req, res) => {
     FROM orders
     JOIN order_details ON orders.order_id = order_details.order_id
     JOIN menu_items ON order_details.item_id = menu_items.item_id
-    JOIN tables ON orders.table_id = tables.table_id
+    LEFT JOIN tables ON orders.table_id = tables.table_id
     WHERE orders.store_id = ? AND orders.order_status = 'success'
     GROUP BY orders.order_id, tables.table_number, menu_items.item_name, menu_items.item_id, order_details.order_detail_id
     ORDER BY orders.order_id, tables.table_number;
@@ -353,13 +353,6 @@ router.put("/cancel-order/:orderId", (req, res) => {
     SET order_status = 'cancelled' 
     WHERE order_id = ?;
   `;
-  // const updateTableQuery = `
-  //   UPDATE tables
-  //   SET status = 'available'
-  //   WHERE table_id = (
-  //     SELECT table_id FROM orders WHERE order_id = ?
-  //   );
-  // `;
   connection.beginTransaction((err) => {
     if (err) return res.status(500).json({ error: err.message });
     connection.query(completeOrderQuery, [orderId], (err) => {
@@ -368,35 +361,25 @@ router.put("/cancel-order/:orderId", (req, res) => {
           res.status(400).json({ error: err.message });
         });
       }
-      // connection.query(updateTableQuery, [orderId], (err) => {
-      //   if (err) {
-      //     return connection.rollback(() => {
-      //       res.status(400).json({ error: err.message });
-      //     });
-      //   }
-      //   connection.commit((err) => {
-      //     if (err) {
-      //       return connection.rollback(() => {
-      //         res.status(400).json({ error: err.message });
-      //       });
-      //     }
-      //     res
-      //       .status(200)
-      //       .json({ message: "Order cancelled and table is now available." });
-      //   });
-      // });
     });
   });
 });
 
-router.put("/complete-order/:orderId", (req, res) => {
-  const { orderId } = req.params;
-  console.log(`Updating order ID: ${orderId}`);
+router.put("/complete-paid/:id", (req, res) => {
+  const { id } = req.params;
 
   const completeOrderQuery = `
     UPDATE orders 
-    SET order_status = 'success' 
+    SET payment_status = 'paid' 
     WHERE order_id = ?;
+  `;
+
+  const updateTableQuery = `
+    UPDATE tables 
+    SET table_status = 'available' 
+    WHERE table_id = (
+      SELECT table_id FROM orders WHERE order_id = ?
+    );
   `;
 
   connection.beginTransaction((err) => {
@@ -406,70 +389,35 @@ router.put("/complete-order/:orderId", (req, res) => {
         .json({ error: "Transaction error: " + err.message });
     }
 
-    connection.query(completeOrderQuery, [orderId], (err, result) => {
+    connection.query(completeOrderQuery, [id], (err, result) => {
       if (err) {
         return connection.rollback(() => {
-          res.status(400).json({ error: "Update failed: " + err.message });
+          res
+            .status(400)
+            .json({ error: "Update payment status failed: " + err.message });
         });
       }
 
-      if (result.affectedRows === 0) {
-        return connection.rollback(() => {
-          res.status(404).json({ error: "No matching order found." });
-        });
-      }
-
-      connection.commit((err) => {
+      connection.query(updateTableQuery, [id], (err, result) => {
         if (err) {
           return connection.rollback(() => {
-            res.status(500).json({ error: "Commit failed: " + err.message });
+            res
+              .status(400)
+              .json({ error: "Update table status failed: " + err.message });
           });
         }
-        res.status(200).json({ message: "Order updated successfully." });
-      });
-    });
-  });
-});
 
-router.put("/complete-paid/:orderId", (req, res) => {
-  const { orderId } = req.params;
-  const completeOrderQuery = `
-    UPDATE orders 
-    SET payment_status = 'paid' 
-    WHERE order_id = ?;
-  `;
-  const updateTableQuery = `
-    UPDATE tables 
-    SET status = 'available' 
-    WHERE table_id = (
-      SELECT table_id FROM orders WHERE order_id = ?
-    );
-  `;
-  connection.beginTransaction((err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    connection.query(completeOrderQuery, [orderId], (err) => {
-      if (err) {
-        return connection.rollback(() => {
-          res.status(400).json({ error: err.message });
+        connection.commit((err) => {
+          if (err) {
+            return connection.rollback(() => {
+              res.status(500).json({ error: "Commit failed: " + err.message });
+            });
+          }
+          res.status(200).json({
+            message: "Order payment confirmed and table is now available.",
+          });
         });
-      }
-    });
-  });
-  connection.query(updateTableQuery, [orderId], (err) => {
-    if (err) {
-      return connection.rollback(() => {
-        res.status(400).json({ error: err.message });
       });
-    }
-    connection.commit((err) => {
-      if (err) {
-        return connection.rollback(() => {
-          res.status(400).json({ error: err.message });
-        });
-      }
-      res
-        .status(200)
-        .json({ message: "Order cancelled and table is now available." });
     });
   });
 });
