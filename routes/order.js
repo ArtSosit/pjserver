@@ -82,8 +82,6 @@ router.get("/:storeId", (req, res) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
-
-    // Grouping orders properly
     const groupedOrders = results.reduce((acc, row) => {
       let order = acc.find((order) => order.order === row.order);
       if (!order) {
@@ -96,8 +94,6 @@ router.get("/:storeId", (req, res) => {
         };
         acc.push(order);
       }
-
-      // Check if item exists in the current order
       let existingItem = order.items.find(
         (item) => item.detail_id === row.detail_id
       );
@@ -112,10 +108,8 @@ router.get("/:storeId", (req, res) => {
           status: row.status,
         });
       }
-
       return acc;
     }, []);
-
     res.status(200).json(groupedOrders);
   });
 });
@@ -149,8 +143,6 @@ router.get("/paid/:storeId", (req, res) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
-
-    // Grouping orders properly
     const groupedOrders = results.reduce((acc, row) => {
       let order = acc.find((order) => order.order === row.order);
       if (!order) {
@@ -158,19 +150,17 @@ router.get("/paid/:storeId", (req, res) => {
           order: row.order,
           tableNumber: row.tableNumber,
           items: [],
-          totalPrice: row.totalPrice, // Use SQL-calculated totalPrice directly
+          totalPrice: row.totalPrice,
           orderstatus: row.orderstatus,
           proof: row.proof,
         };
         acc.push(order);
       }
-
-      // Check if item exists in the current order
       let existingItem = order.items.find(
         (item) => item.detail_id === row.detail_id
       );
       if (existingItem) {
-        existingItem.quantity += row.quantity; // Merge quantities for same item
+        existingItem.quantity += row.quantity; 
       } else {
         order.items.push({
           detail_id: row.detail_id,
@@ -181,10 +171,8 @@ router.get("/paid/:storeId", (req, res) => {
           item_image: row.item_image,
         });
       }
-
       return acc;
     }, []);
-
     res.status(200).json(groupedOrders);
   });
 });
