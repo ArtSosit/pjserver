@@ -40,7 +40,7 @@ router.get("/", (req, res) => {
 router.get("/:id", (req, res) => {
   const storeId = req.params.id;
   const query =
-    "SELECT menu_items.status,menu_items.item_id, menu_items.item_name, menu_items.price, menu_items.item_image, food_categories.category_name AS category FROM menu_items JOIN food_categories ON menu_items.category_id = food_categories.category_id WHERE menu_items.store_id = ?";
+    "SELECT menu_items.status,menu_items.item_id, menu_items.item_name, menu_items.price, menu_items.item_image,menu_items.is_recommended,menu_items.discount,food_categories.category_name AS category FROM menu_items JOIN food_categories ON menu_items.category_id = food_categories.category_id WHERE menu_items.store_id = ?";
   connection.query(query, [storeId], (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -93,26 +93,29 @@ router.put("/:id", upload.single("item_image"), (req, res) => {
     return res.status(400).json({ error: "All fields are required" });
   }
 
-  const query = `
-    UPDATE menu_items 
-    SET category_id = ?, item_name = ?, price = ?, item_image = ? 
-    WHERE item_id = ? AND store_id = ?;
-  `;
+  let query = `UPDATE menu_items SET category_id = ?, item_name = ?, price = ?`;
+  let values = [category_id, name, price];
 
-  connection.query(
-    query,
-    [category_id, name, price, item_image, id, store_id],
-    (err, results) => {
-      if (err) {
-        return res.status(400).json({ error: err.message });
-      }
-      if (results.affectedRows === 0) {
-        return res.status(404).json({ message: "Menu not found" });
-      }
-      res.status(200).json({ message: "Menu updated successfully" });
+  // เช็คว่า item_image มีค่าหรือไม่ ถ้ามีให้เพิ่มเข้าไป
+  if (item_image) {
+    query += `, item_image = ?`;
+    values.push(item_image);
+  }
+
+  query += ` WHERE item_id = ? AND store_id = ?;`;
+  values.push(id, store_id);
+
+  connection.query(query, values, (err, results) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
     }
-  );
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: "Menu not found" });
+    }
+    res.status(200).json({ message: "Menu updated successfully" });
+  });
 });
+
 // Delete menu item
 router.delete("/:id", (req, res) => {
   const id = req.params.id;
@@ -148,6 +151,31 @@ router.post("/status", upload.none(), (req, res) => {
     }
 
     res.status(200).json({ message: "✅ Menu status updated successfully" });
+  });
+});
+
+router.put("/recommend/:itemId", (req, res) => {
+  const { itemId } = req.params;
+  let { recommended } = req.body;
+
+  // 🔹 ตรวจสอบว่า recommended เป็น 0 หรือ 1 เท่านั้น
+  if (recommended !== 0 && recommended !== 1) {
+    return res
+      .status(400)
+      .json({ error: "ค่า recommended ต้องเป็น 0 หรือ 1 เท่านั้น" });
+  }
+
+  const updateQuery = `UPDATE menu_items SET is_recommended = ? WHERE item_id = ?`;
+
+  connection.query(updateQuery, [recommended, itemId], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    // 🔹 ถ้าไม่มีแถวไหนถูกอัปเดต แสดงว่า item_id ไม่ถูกต้อง
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "ไม่พบเมนูที่ต้องการอัปเดต" });
+    }
+
+    res.json({ success: true, message: "⭐ อัปเดตเมนูแนะนำสำเร็จ" });
   });
 });
 

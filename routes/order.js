@@ -67,7 +67,7 @@ router.get("/:storeId", (req, res) => {
       order_details.Status as status,
       orders.order_status as orderstatus,
       SUM(order_details.quantity) AS quantity,
-      MIN(menu_items.price) AS price,
+      MIN(order_details.price) AS price,
       orders.total_amount AS totalPrice
     FROM orders
     JOIN order_details ON orders.order_id = order_details.order_id
@@ -127,7 +127,7 @@ router.get("/paid/:storeId", (req, res) => {
       order_details.Status as status,
       orders.order_status as orderstatus,
       SUM(order_details.quantity) AS quantity,
-      MIN(menu_items.price) AS price,
+      MIN(order_details.price) AS price,
       orders.total_amount AS totalPrice,
       orders.payment_proof as proof
     FROM orders
@@ -160,7 +160,7 @@ router.get("/paid/:storeId", (req, res) => {
         (item) => item.detail_id === row.detail_id
       );
       if (existingItem) {
-        existingItem.quantity += row.quantity; 
+        existingItem.quantity += row.quantity;
       } else {
         order.items.push({
           detail_id: row.detail_id,
@@ -184,6 +184,8 @@ router.get("/:storeId/:orderId", (req, res) => {
     SELECT 
       orders.order_id AS orderId,
       orders.order_time AS ordertime,
+      orders.order_status AS orderstatus,
+      orders.payment_status AS paymentstatus,
       tables.table_number AS tableNumber,
       menu_items.item_name AS name,
       menu_items.item_image AS image ,
@@ -191,8 +193,8 @@ router.get("/:storeId/:orderId", (req, res) => {
       order_details.order_detail_id AS detail_id,
       order_details.Status as status  ,
       SUM(order_details.quantity) AS quantity,
-      MIN(menu_items.price) AS price,
-      SUM(order_details.quantity * menu_items.price) AS totalPrice
+      MIN(order_details.price) AS price,
+      SUM(order_details.quantity * order_details.price) AS totalPrice
     FROM orders
     JOIN order_details ON orders.order_id = order_details.order_id
     JOIN menu_items ON order_details.item_id = menu_items.item_id
@@ -214,6 +216,8 @@ router.get("/:storeId/:orderId", (req, res) => {
     const groupedOrder = {
       orderId: results[0].orderId,
       orderTime: results[0].ordertime,
+      orderStatus: results[0].orderstatus,
+      paymentStatus: results[0].paymentstatus,
       tableNumber: results[0].tableNumber,
       items: results.map((row) => ({
         detail_id: row.detail_id,
@@ -235,7 +239,7 @@ router.get("/:storeId/:orderId", (req, res) => {
 router.post("/", (req, res) => {
   console.log("📦 ORDER RECEIVED:", req.body);
 
-  const { store_id, table_id, items, order_id } = req.body;
+  const { store_id, table_id, items, order_id, price } = req.body;
   if (!store_id || !table_id || !items || items.length === 0) {
     return res.status(400).json({ error: "❌ ข้อมูลไม่ครบถ้วน!" });
   }
@@ -336,9 +340,50 @@ router.post("/", (req, res) => {
 
 router.put("/cancel-order/:orderId", (req, res) => {
   const { orderId } = req.params;
+  const io = req.app.get("socketio"); // ✅ ดึง io จาก `server.js`
+
+  const cancelOrderQuery = `UPDATE orders SET order_status = 'cancelled' WHERE order_id = ?;`;
+  const cancelOrderDetailsQuery = `UPDATE order_details SET Status = 'cancelled' WHERE order_id = ?;`;
+
+  connection.beginTransaction((err) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    connection.query(cancelOrderQuery, [orderId], (err) => {
+      if (err) {
+        return connection.rollback(() => {
+          res.status(400).json({ error: err.message });
+        });
+      }
+
+      connection.query(cancelOrderDetailsQuery, [orderId], (err) => {
+        if (err) {
+          return connection.rollback(() => {
+            res.status(400).json({ error: err.message });
+          });
+        }
+
+        connection.commit((err) => {
+          if (err) {
+            return connection.rollback(() => {
+              res.status(500).json({ error: err.message });
+            });
+          }
+
+          // ✅ แจ้งลูกค้าให้ลบ localStorage
+          io.emit("orderCancelled", { orderId });
+
+          res.json({ message: "Order cancelled successfully" });
+        });
+      });
+    });
+  });
+});
+
+router.put("/complete-order/:orderId", (req, res) => {
+  const { orderId } = req.params;
   const completeOrderQuery = `
     UPDATE orders 
-    SET order_status = 'cancelled' 
+    SET order_status = 'Success' 
     WHERE order_id = ?;
   `;
   connection.beginTransaction((err) => {

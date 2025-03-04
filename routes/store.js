@@ -26,7 +26,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 router.put(
-  "/additional-info",
+  "/additional-info/",
   upload.fields([
     { name: "storeImage", maxCount: 1 },
     { name: "promptpayimage", maxCount: 1 },
@@ -42,41 +42,64 @@ router.put(
       closeTime,
     } = req.body;
 
-    // ไฟล์รูปภาพสามารถเป็น null ได้
+    // ไฟล์รูปภาพ (อาจไม่มี)
     const storeImage = req.files?.storeImage?.[0]?.filename || null;
     const promptpayImage = req.files?.promptpayimage?.[0]?.filename || null;
 
-    // ตรวจสอบเฉพาะฟิลด์ใน body
+    // ตรวจสอบค่าที่ต้องการอัปเดต
     if (!storeName) {
       return res.status(400).json({ error: "storeName is required." });
     }
 
-    const query = `
-      UPDATE stores
-      SET 
-        store_name = ?, 
-        details = ?, 
-        contact = ?, 
-        promptpay_number = ?, 
-        store_image = ?, 
-        promptpay_qr = ?, 
-        open_time = ?, 
-        close_time = ? 
-      WHERE store_id = ?;
-    `;
+    // สร้าง SQL Dynamic
+    let query = `UPDATE stores SET `;
+    let values = [];
+    let fields = [];
 
-    const values = [
-      storeName, // จำเป็นต้องมีค่า
-      storeDetails || null, // กำหนดค่าเริ่มต้นเป็น null หากไม่มีข้อมูล
-      contactInfo || null, // กำหนดค่าเริ่มต้นเป็น null หากไม่มีข้อมูล
-      promptpay || null,
-      storeImage, // รูปภาพสามารถเป็น null ได้
-      promptpayImage, // รูปภาพสามารถเป็น null ได้
-      openTime || null,
-      closeTime || null,
-      userID || null, // หาก userID ไม่ส่งมา สามารถเป็น null ได้
-    ];
+    // เพิ่มเฉพาะค่าที่มี
+    if (storeName) {
+      fields.push("store_name = ?");
+      values.push(storeName);
+    }
+    if (storeDetails) {
+      fields.push("details = ?");
+      values.push(storeDetails);
+    }
+    if (contactInfo) {
+      fields.push("contact = ?");
+      values.push(contactInfo);
+    }
+    if (promptpay) {
+      fields.push("promptpay_number = ?");
+      values.push(promptpay);
+    }
+    if (storeImage) {
+      fields.push("store_image = ?");
+      values.push(storeImage);
+    }
+    if (promptpayImage) {
+      fields.push("promptpay_qr = ?");
+      values.push(promptpayImage);
+    }
+    if (openTime) {
+      fields.push("open_time = ?");
+      values.push(openTime);
+    }
+    if (closeTime) {
+      fields.push("close_time = ?");
+      values.push(closeTime);
+    }
 
+    // ถ้าไม่มีค่าที่ต้องอัปเดต ให้ return error
+    if (fields.length === 0) {
+      return res.status(400).json({ error: "No fields to update." });
+    }
+
+    // รวมคำสั่ง SQL
+    query += fields.join(", ") + " WHERE store_id = ?;";
+    values.push(userID);
+
+    // รันคำสั่ง SQL
     connection.query(query, values, (err, results) => {
       if (err) {
         console.error("Database error:", err);
@@ -121,7 +144,8 @@ router.delete("/kitchen/:id", (req, res) => {
 // Get store by ID
 router.get("/:id", (req, res) => {
   const userId = req.params.id;
-  const query = "SELECT * FROM stores WHERE store_id = ?";
+  const query =
+    "SELECT store_name,username,email,store_image,details,promptpay_number,promptpay_qr,open_time,close_time,contact FROM stores WHERE store_id = ?";
   connection.query(query, [userId], (err, results) => {
     if (err) {
       return res.status(400).json({ error: err.message });
