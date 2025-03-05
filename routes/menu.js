@@ -179,4 +179,42 @@ router.put("/recommend/:itemId", (req, res) => {
   });
 });
 
+router.put("/discount/:itemId", (req, res) => {
+  const { itemId } = req.params;
+  const { discount } = req.body;
+  const updateQuery = `UPDATE menu_items SET discount = ? WHERE item_id = ?`;
+
+  connection.query(updateQuery, [discount, itemId], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "ไม่พบเมนูที่ต้องการอัปเดต" });
+    }
+
+    res.json({ success: true, message: "⭐ อัปเดตส่วนลดสำเร็จ" });
+  });
+});
+
+router.get("/top-menu/:storeId", (req, res) => {
+  const storeId = req.params.storeId;
+  if (!storeId) {
+    return res.status(400).json({ error: "Missing storeId" });
+  }
+  const query = ` SELECT od.item_id, m.item_name, COUNT(od.item_id) AS order_count
+      FROM order_details od
+      JOIN menu_items m ON od.item_id = m.item_id
+      JOIN orders o ON od.order_id = o.order_id
+      WHERE m.store_id = ? 
+      AND o.order_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)	
+      GROUP BY od.item_id
+      ORDER BY order_count DESC
+      LIMIT 1`;
+  connection.query(query, [storeId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.status(200).json(results);
+  });
+});
+
 module.exports = router;

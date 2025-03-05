@@ -65,7 +65,9 @@ router.get("/:storeId", (req, res) => {
       menu_items.item_id,
       order_details.order_detail_id AS detail_id,
       order_details.Status as status,
+      order_details.description AS note,
       orders.order_status as orderstatus,
+      
       SUM(order_details.quantity) AS quantity,
       MIN(order_details.price) AS price,
       orders.total_amount AS totalPrice
@@ -106,6 +108,7 @@ router.get("/:storeId", (req, res) => {
           quantity: row.quantity,
           price: row.price,
           status: row.status,
+          note: row.note,
         });
       }
       return acc;
@@ -129,7 +132,8 @@ router.get("/paid/:storeId", (req, res) => {
       SUM(order_details.quantity) AS quantity,
       MIN(order_details.price) AS price,
       orders.total_amount AS totalPrice,
-      orders.payment_proof as proof
+      orders.payment_proof as proof,
+      orders.payment_status as paymentstatus
     FROM orders
     JOIN order_details ON orders.order_id = order_details.order_id
     JOIN menu_items ON order_details.item_id = menu_items.item_id
@@ -153,6 +157,7 @@ router.get("/paid/:storeId", (req, res) => {
           totalPrice: row.totalPrice,
           orderstatus: row.orderstatus,
           proof: row.proof,
+          paymentstatus: row.paymentstatus,
         };
         acc.push(order);
       }
@@ -191,7 +196,8 @@ router.get("/:storeId/:orderId", (req, res) => {
       menu_items.item_image AS image ,
       menu_items.item_id,
       order_details.order_detail_id AS detail_id,
-      order_details.Status as status  ,
+      order_details.Status as status ,
+      order_details.description AS note,
       SUM(order_details.quantity) AS quantity,
       MIN(order_details.price) AS price,
       SUM(order_details.quantity * order_details.price) AS totalPrice
@@ -226,6 +232,7 @@ router.get("/:storeId/:orderId", (req, res) => {
         quantity: row.quantity,
         price: parseFloat(row.price),
         image: row.image,
+        note: row.note,
 
         status: row.status,
       })),
@@ -300,13 +307,7 @@ router.post("/", (req, res) => {
         return new Promise((resolve, reject) => {
           connection.query(
             orderDetailsQuery,
-            [
-              orderId,
-              item.item_id,
-              item.quantity,
-              item.price,
-              item.description,
-            ],
+            [orderId, item.item_id, item.quantity, item.price, item.note],
             (err) => {
               if (err) return reject(err);
               resolve();
@@ -568,7 +569,8 @@ router.put("/proof/:orderId", upload.single("proof"), (req, res) => {
 
   const updateOrderQuery = `
     UPDATE orders 
-    SET payment_proof = ? 
+    SET payment_proof = ?,
+    payment_status = 'pending'
     WHERE order_id = ?;
   `;
 

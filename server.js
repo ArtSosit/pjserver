@@ -4,7 +4,7 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
 const { Server } = require("socket.io");
-
+const router = express.Router();
 const app = express();
 const server = http.createServer(app); // ✅ กำหนด server
 const io = new Server(server, {
@@ -36,7 +36,10 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes); // 👈 ใช้งาน /orders
 app.use("/api/tables", tableRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
+app.get("/server-time", (req, res) => {
+  const now = new Date(); // ✅ ใช้ Date() ถูกต้อง
+  res.json({ serverTime: now.toISOString() }); // ✅ ส่งค่าเป็น ISO 8601
+});
 // ✅ Socket.io logic (เฉพาะ event ที่ใช้ทุกที่)
 io.on("connection", (socket) => {
   console.log("⚡ Client connected:", socket.id);

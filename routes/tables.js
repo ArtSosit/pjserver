@@ -51,4 +51,18 @@ router.delete("/:id", (req, res) => {
     res.status(200).json({ message: "Table deleted successfully" });
   });
 });
+
+router.put("/:id", (req, res) => {
+  const id = req.params.id;
+  const { table_number } = req.body;
+  const query = "UPDATE tables SET table_number = ? WHERE table_id = ?";
+  const values = [table_number, id];
+  connection.query(query, values, (err, results) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(200).json({ message: "Table updated successfully" });
+  });
+});
+
 module.exports = router;
