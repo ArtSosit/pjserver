@@ -5,6 +5,7 @@ const path = require("path");
 const connection = require("../db");
 const router = express.Router();
 console.log("store.js loaded");
+const bcrypt = require("bcrypt");
 
 const { uploadFiles } = require("./fileUpload");
 
@@ -194,4 +195,82 @@ router.get("/time/:id", (req, res) => {
     res.status(200).json(results[0]);
   });
 });
+
+router.post("/add-user/:storeId", async (req, res) => {
+  const { username, password } = req.body;
+  const store_id = req.params.storeId;
+
+  if (!store_id || !username || !password) {
+    return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบถ้วน" });
+  }
+
+  try {
+    bcrypt.hash(password, 10, (err, hash) => {
+      if (err) {
+        return res.status(500).json({ error: "Error hashing password" });
+      }
+      const sql = `
+      INSERT INTO kitchen_users (store_id, username, password) 
+      VALUES (?, ?, ?)
+    `;
+
+      // ใช้ connection.query() แทน query()
+      connection.query(sql, [store_id, username, hash], (err, results) => {
+        if (err) {
+          console.error("Database error:", err);
+          return res
+            .status(500)
+            .json({ error: "Database error: " + err.message });
+        }
+        res.status(201).json({ message: "เพิ่มผู้ใช้สำเร็จ!" });
+      });
+    });
+  } catch (error) {
+    console.error("Error adding user:", error.massage);
+    res
+      .status(500)
+      .json({ error: "เกิดข้อผิดพลาดในการเพิ่มผู้ใช้! " + error.message });
+  }
+});
+
+router.get("/kitchen/:storeId", async (req, res) => {
+  try {
+    const storeId = req.params.storeId;
+
+    // ตรวจสอบว่ามี storeId และเป็นตัวเลข
+    if (!storeId || isNaN(storeId)) {
+      return res.status(400).json({ error: "Invalid store ID" });
+    }
+
+    const sql = "SELECT * FROM kitchen_users WHERE store_id = ?";
+
+    // ใช้ Promise wrapper แทน callback
+    connection.query(sql, [storeId], (err, results) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res
+          .status(500)
+          .json({ error: "Database error: " + err.message });
+      }
+      res.status(200).json(results);
+    });
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    res.status(500).json({ error: "Unexpected server error" });
+  }
+});
+
+router.delete("/kitchen/:userId", (req, res) => {
+  const { userId } = req.params;
+  const sql = "DELETE FROM kitchen_users WHERE kitchen_user_id = ?";
+
+  connection.query(sql, [userId], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ error: "Database error: " + err.message });
+    }
+    res.status(200).json({ message: "User deleted successfully" });
+  });
+});
+
 module.exports = router;

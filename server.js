@@ -27,7 +27,7 @@ const menuRoutes = require("./routes/menu");
 const categoryRoutes = require("./routes/categories");
 const orderRoutes = require("./routes/order"); // 👈 route นี้ต้องใช้ io
 const tableRoutes = require("./routes/tables");
-
+const saleRoutes = require("./routes/sale"); // 👈 เพิ่ม route ขายของ
 // ✅ Use routes
 app.use("/api/auth", authRoutes);
 app.use("/api/stores", storeRoutes);
@@ -35,6 +35,7 @@ app.use("/api/menus", menuRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes); // 👈 ใช้งาน /orders
 app.use("/api/tables", tableRoutes);
+app.use("/api/sales", saleRoutes); // 👈 เพิ่ม route ขายของ
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/server-time", (req, res) => {
   const now = new Date(); // ✅ ใช้ Date() ถูกต้อง

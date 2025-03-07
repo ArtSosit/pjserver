@@ -456,33 +456,6 @@ router.put("/complete-paid/:id", (req, res) => {
   });
 });
 
-// Route to get daily sales for paid orders
-router.get("/sales", (req, res) => {
-  const { store_id, date } = req.query; // รับ store_id และวันที่จาก query parameters
-  // คำสั่ง SQL เพื่อคำนวณยอดขายรายวัน โดยเลือกเฉพาะคำสั่งที่ชำระเงินแล้ว (payment_status = 'paids')
-  const salesQuery = `
-    SELECT 
-      SUM(total_amount) AS total_sales 
-    FROM orders 
-    WHERE store_id = ? 
-      AND DATE(order_time) = DATE(?) 
-      AND payment_status = 'paids' -- เพิ่มเงื่อนไขเฉพาะคำสั่งที่ชำระเงินแล้ว
-      AND order_status = 'completed'; -- หรือสถานะออเดอร์ที่สมบูรณ์
-  `;
-  // ทำการ query ข้อมูลยอดขาย
-  connection.query(salesQuery, [store_id, date], (err, results) => {
-    if (err) {
-      return res.status(400).json({ error: err.message });
-    }
-    // ตรวจสอบผลลัพธ์
-    if (results.length === 0 || results[0].total_sales === null) {
-      return res.status(200).json({ total_sales: 0 }); // ถ้ายอดขายไม่มี ให้ส่ง 0
-    }
-    // ส่งผลลัพธ์กลับ
-    res.status(200).json({ total_sales: results[0].total_sales });
-  });
-});
-
 router.put("/complateDetail/:detailId", (req, res) => {
   const { detailId } = req.params;
   const sql = `UPDATE order_details
