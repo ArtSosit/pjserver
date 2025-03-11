@@ -273,4 +273,70 @@ router.delete("/kitchen/:userId", (req, res) => {
   });
 });
 
+router.put("/kitchen/password/:userId", (req, res) => {
+  const { userId } = req.params;
+  const { password } = req.body;
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  const sql = "UPDATE kitchen_users SET password = ? WHERE kitchen_user_id = ?";
+
+  connection.query(sql, [hashedPassword, userId], (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ error: "Database error: " + err.message });
+    }
+    res.status(200).json({ message: "User deleted successfully" });
+  });
+});
+  
+router.put("/update-password/", (req, res) => {
+  const { userId, oldPassword, newPassword } = req.body;
+
+  if (!userId || !oldPassword || !newPassword) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  // ✅ 1. ค้นหารหัสผ่านเก่าของผู้ใช้
+  connection.query(
+    "SELECT password FROM stores WHERE store_id = ?",
+    [userId],
+    (err, result) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res
+          .status(500)
+          .json({ error: "Database error: " + err.message });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const storedPassword = result[0].password;
+      const isPasswordMatch = bcrypt.compareSync(oldPassword, storedPassword);
+
+      if (!isPasswordMatch) {
+        return res.status(400).json({ error: "Invalid old password" });
+      }
+
+      // ✅ 2. แฮชรหัสผ่านใหม่
+      const hashedPassword = bcrypt.hashSync(newPassword, 10);
+
+      // ✅ 3. อัปเดตรหัสผ่านในฐานข้อมูล
+      connection.query(
+        "UPDATE stores SET password = ? WHERE store_id = ?",
+        [hashedPassword, userId],
+        (updateErr, updateResult) => {
+          if (updateErr) {
+            console.error("Database error:", updateErr);
+            return res
+              .status(500)
+              .json({ error: "Database error: " + updateErr.message });
+          }
+          res.status(200).json({ message: "Password updated successfully" });
+        }
+      );
+    }
+  );
+});
+
 module.exports = router;

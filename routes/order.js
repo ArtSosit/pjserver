@@ -245,7 +245,7 @@ router.get("/:storeId/:orderId", (req, res) => {
 
 router.post("/", (req, res) => {
   console.log("📦 ORDER RECEIVED:", req.body);
-
+  const io = req.app.get("socketio");
   const { store_id, table_id, items, order_id, price } = req.body;
   if (!store_id || !table_id || !items || items.length === 0) {
     return res.status(400).json({ error: "❌ ข้อมูลไม่ครบถ้วน!" });
@@ -272,7 +272,7 @@ router.post("/", (req, res) => {
             res.status(400).json({ error: err.message })
           );
         }
-        insertOrderDetails(order_id); // เรียกฟังก์ชันเพิ่มรายการสินค้า
+        insertOrderDetails(order_id, store_id); // เรียกฟังก์ชันเพิ่มรายการสินค้า
       });
     } else {
       // ถ้าไม่มี order_id -> ให้สร้าง order ใหม่
@@ -291,13 +291,13 @@ router.post("/", (req, res) => {
             );
           }
           const newOrderId = orderResult.insertId;
-          insertOrderDetails(newOrderId);
+          insertOrderDetails(newOrderId, store_id);
         }
       );
     }
 
     // ฟังก์ชันสำหรับ INSERT order_details
-    function insertOrderDetails(orderId) {
+    function insertOrderDetails(orderId, storeId) {
       const orderDetailsQuery = `
         INSERT INTO order_details (order_id, item_id, quantity, price, description)
         VALUES (?, ?, ?, ?, ?);
@@ -324,10 +324,12 @@ router.post("/", (req, res) => {
                 res.status(400).json({ error: err.message })
               );
             }
+
             res.status(201).json({
               message: "✅ Order placed successfully!",
               orderId,
             });
+            io.emit("ordering", { storeId });
           });
         })
         .catch((err) => {
@@ -370,9 +372,7 @@ router.put("/cancel-order/:orderId", (req, res) => {
             });
           }
 
-          // ✅ แจ้งลูกค้าให้ลบ localStorage
           io.emit("orderCancelled", { orderId });
-
           res.json({ message: "Order cancelled successfully" });
         });
       });
@@ -399,9 +399,9 @@ router.put("/complete-order/:orderId", (req, res) => {
   });
 });
 
-router.put("/complete-paid/:id", (req, res) => {
-  const { id } = req.params;
-
+router.put("/complete-paid/:orderId", (req, res) => {
+  const { orderId } = req.params;
+  const io = req.app.get("socketio");
   const completeOrderQuery = `
     UPDATE orders 
     SET payment_status = 'paid' 
@@ -423,7 +423,7 @@ router.put("/complete-paid/:id", (req, res) => {
         .json({ error: "Transaction error: " + err.message });
     }
 
-    connection.query(completeOrderQuery, [id], (err, result) => {
+    connection.query(completeOrderQuery, [orderId], (err, result) => {
       if (err) {
         return connection.rollback(() => {
           res
@@ -432,7 +432,7 @@ router.put("/complete-paid/:id", (req, res) => {
         });
       }
 
-      connection.query(updateTableQuery, [id], (err, result) => {
+      connection.query(updateTableQuery, [orderId], (err, result) => {
         if (err) {
           return connection.rollback(() => {
             res
@@ -440,16 +440,9 @@ router.put("/complete-paid/:id", (req, res) => {
               .json({ error: "Update table status failed: " + err.message });
           });
         }
-
-        connection.commit((err) => {
-          if (err) {
-            return connection.rollback(() => {
-              res.status(500).json({ error: "Commit failed: " + err.message });
-            });
-          }
-          res.status(200).json({
-            message: "Order payment confirmed and table is now available.",
-          });
+        io.emit("confirmPayment", { orderId });
+        res.status(200).json({
+          message: "Order payment confirmed and table is now available.",
         });
       });
     });
@@ -534,8 +527,10 @@ router.put("/cancelledDetail/:detailId", (req, res) => {
 
 router.put("/proof/:orderId", upload.single("proof"), (req, res) => {
   const { orderId } = req.params;
+  const { storeId } = req.body;
+  const io = req.app.get("socketio");
   const proofimg = req.file ? req.file.filename : null;
-
+  console.log(storeId);
   if (!proofimg) {
     return res.status(400).json({ error: "No file uploaded" });
   }
@@ -562,6 +557,7 @@ router.put("/proof/:orderId", upload.single("proof"), (req, res) => {
             res.status(500).json({ error: err.message });
           });
         }
+        io.emit("sendproof", { storeId });
         res.status(200).json({
           message: "Payment proof uploaded successfully!",
           proof: proofimg,

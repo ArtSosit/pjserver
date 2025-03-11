@@ -54,66 +54,127 @@ router.get("/:id", (req, res) => {
 // Create new menu item
 router.post("/", upload.single("item_image"), (req, res) => {
   const { category_id, store_id, name, price } = req.body;
-  // Get the uploaded file's name (if any)
   const item_image = req.file ? req.file.filename : null;
+
   // Validate input fields
   if (!category_id || !store_id || !name || !price) {
     return res.status(400).json({ message: "All fields are required" });
   }
-  // SQL query to insert a new menu item
-  const query = `
-    INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) 
-    VALUES (?, ?, ?, ?, ?);
+
+  // Check for duplicate menu items in the same store
+  const checkDuplicateQuery = `
+    SELECT * FROM menu_items 
+    WHERE store_id = ? AND item_name = ?;
   `;
 
-  connection.query(
-    query,
-    [category_id, store_id, name, price, item_image],
-    (err, results) => {
-      if (err) {
-        console.error("Error inserting menu item:", err.message);
-        return res.status(400).json({ error: err.message });
-      }
-
-      res.status(201).json({
-        message: "Menu created successfully",
-        menuItemId: results.insertId, // Return the new item's ID
-      });
+  connection.query(checkDuplicateQuery, [store_id, name], (err, results) => {
+    if (err) {
+      console.error("Error checking for duplicate menu item:", err.message);
+      return res.status(500).json({ error: "Error checking for duplicates" });
     }
-  );
+
+    if (results.length > 0) {
+      // Duplicate found, do not proceed with insertion
+      return res.status(409).json("มีเมนูนี้แล้วในร้านค้า");
+    }
+
+    // No duplicates found, proceed with insertion
+    const insertQuery = `
+      INSERT INTO menu_items (category_id, store_id, item_name, price, item_image) 
+      VALUES (?, ?, ?, ?, ?);
+    `;
+
+    connection.query(
+      insertQuery,
+      [category_id, store_id, name, price, item_image],
+      (err, results) => {
+        if (err) {
+          console.error("Error inserting menu item:", err.message);
+          return res.status(400).json({ error: err.message });
+        }
+
+        res.status(201).json({
+          message: "Menu item created successfully",
+          menuItemId: results.insertId, // Return the new item's ID
+        });
+      }
+    );
+  });
 });
 
 // Update menu item
 router.put("/:id", upload.single("item_image"), (req, res) => {
-  const id = req.params.id;
+  const id = parseInt(req.params.id, 10);
   const { category_id, store_id, name, price } = req.body;
   const item_image = req.file ? req.file.filename : null;
 
-  if (!category_id || !store_id || !name || !price) {
-    return res.status(400).json({ error: "All fields are required" });
+  // Validate input fields except for category_id
+  if (!store_id || !name || !price || isNaN(id)) {
+    return res
+      .status(400)
+      .json({ message: "Store ID, name, price, and valid ID are required" });
   }
 
-  let query = `UPDATE menu_items SET category_id = ?, item_name = ?, price = ?`;
-  let values = [category_id, name, price];
+  // First, check for duplicate menu items in the same store excluding the current item
+  const duplicateCheckQuery = `
+    SELECT * FROM menu_items 
+    WHERE item_name = ? AND store_id = ? AND item_id != ?;
+  `;
 
-  // เช็คว่า item_image มีค่าหรือไม่ ถ้ามีให้เพิ่มเข้าไป
-  if (item_image) {
-    query += `, item_image = ?`;
-    values.push(item_image);
-  }
+  connection.query(
+    duplicateCheckQuery,
+    [name, store_id, id],
+    (err, results) => {
+      if (err) {
+        console.error("Error checking for duplicates:", err);
+        return res.status(500).json({ error: "Error checking for duplicates" });
+      }
 
-  query += ` WHERE item_id = ? AND store_id = ?;`;
-  values.push(id, store_id);
+      if (results.length > 0) {
+        // Duplicate found, do not proceed with update
+        return res.status(409).json({
+          message:
+            "Another menu item with the same name already exists in this store",
+        });
+      }
 
-  connection.query(query, values, (err, results) => {
-    if (err) {
-      return res.status(400).json({ error: err.message });
+      // Construct the update query dynamically based on provided fields
+      let query = "UPDATE menu_items SET ";
+      let updates = [];
+      let values = [];
+
+      // Only update category_id if it is provided and not empty
+      if (category_id) {
+        updates.push("category_id = ?");
+        values.push(category_id);
+      }
+
+      // Always update these fields
+      updates.push("store_id = ?", "item_name = ?", "price = ?");
+      values.push(store_id, name, price);
+
+      if (item_image) {
+        updates.push("item_image = ?");
+        values.push(item_image);
+      }
+
+      query += updates.join(", ") + " WHERE item_id = ? AND store_id = ?;";
+      values.push(id, store_id);
+
+      connection.query(query, values, (err, results) => {
+        if (err) {
+          console.error("Error updating menu item:", err);
+          return res.status(500).json({ error: err.message });
+        }
+        if (results.affectedRows === 0) {
+          return res
+            .status(404)
+            .json({ message: "Menu item not found or no changes made" });
+        }
+        res.status(200).json({ message: "Menu item updated successfully" });
+      });
     }
-    if (results.affectedRows === 0) {
-      return res.status(404).json({ message: "Menu not found" });
-    }
-    res.status(200).json({ message: "Menu updated successfully" });
-  });
+  );
 });
 
 // Delete menu item
