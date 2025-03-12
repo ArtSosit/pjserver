@@ -431,7 +431,7 @@ router.put("/complete-paid/:orderId", (req, res) => {
             .json({ error: "Update payment status failed: " + err.message });
         });
       }
-
+      io.emit("confirmPayment", orderId);
       connection.query(updateTableQuery, [orderId], (err, result) => {
         if (err) {
           return connection.rollback(() => {
@@ -440,7 +440,7 @@ router.put("/complete-paid/:orderId", (req, res) => {
               .json({ error: "Update table status failed: " + err.message });
           });
         }
-        io.emit("confirmPayment", { orderId });
+
         res.status(200).json({
           message: "Order payment confirmed and table is now available.",
         });
