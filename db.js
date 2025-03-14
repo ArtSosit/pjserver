@@ -1,16 +1,20 @@
-const mysql = require("mysql2");
+require('dotenv').config();
+const mysql = require('mysql2');
+
 const connection = mysql.createConnection({
-  host: "localhost",
-  user: "arty",
-  password: "00000000",
-  database: "orderfoodonline",
-  port: 3306,
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'testdb',
+  port: process.env.DB_PORT || 3306
 });
-connection.connect((err) => {
+
+connection.connect(err => {
   if (err) {
-    console.error("Error connecting to MySQL:", err);
-    return;
+    console.error('❌ Database connection failed: ' + err.stack);
+  } else {
+    console.log('✅ Connected to MySQL');
   }
-  console.log("Connected to MySQL");
 });
+
 module.exports = connection;
